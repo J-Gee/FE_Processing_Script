@@ -26,9 +26,12 @@ output_dir = "C:/Users/jackh/OneDrive - The University of Liverpool\PhD\First Ye
 default_batch_loc = "C:/Users/jackh/OneDrive - The University of Liverpool/PhD/First Year/Master " \
                     "Data/GProcessing/Hiden Output (Unprocessed)/"
 
+every_nth_file = 5 # Which nth file is the one to process
+# 5th is default from 2 cup 3 from sample samples
+
 headspace_volume = 7  # (mL) Correct with more accurate value when possible
-pressure = 1  # (bar)
-ideal_gas_cons = 0.083145  # (L*bar / K*mol)
+pressure = 1  # (atm)
+ideal_gas_cons = 0.08205  # (L*atm / K*mol)
 temperature = 293  # (K)
 
 molar_vol_gas = (ideal_gas_cons * temperature) / pressure
@@ -39,7 +42,7 @@ molar_vol_gas = (ideal_gas_cons * temperature) / pressure
 class Application(tk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
-        master.title("PCAT-GProcessing")
+        master.title("FE Processing Script")
         self.pack()
         container = tk.Frame(master)
         '''
@@ -344,31 +347,37 @@ class Output(tk.Frame):
         self.output_filename = (data[2]) + "_" + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
         # batch_id + yyyy-mm-dd_HH-MM-SS
 
-        global headspace_volume, molar_vol_gas
-
+        global headspace_volume, molar_vol_gas, every_nth_file
+        nth_counter = 1
         processed_output_dict = {}
         for i in data[0]:
             i2 = (i.split("_"))[2]  # takes file name, splits for FormulationIdxxxxxx
+            if nth_counter != every_nth_file: # skips through scans until desired is reached
+                nth_counter += 1
+                continue
+            nth_counter = 1 # resets counter as desired has been reached
             form_datetime = i.split("_")[3]  # takes the datetime from formulation filename
             form_datetime = form_datetime.split(".")[0:2]  # cuts off .csv extension
             form_datetime = "20" + form_datetime[0] + form_datetime[1]
             # adds 20 to start of date to give date format e.g 20200314
-
             if processed_output_dict == {}:  # If nothing in dict, first should be an n2_sample
-                processed_output_dict.setdefault("N2_samp", []).append((True))
+                pass
+                #processed_output_dict.setdefault("N2_samp", []).append((True))
 
             elif i2.split("Id")[1] not in processed_output_dict["form_id"]:
-                processed_output_dict.setdefault("N2_samp", []).append((True))
+                #processed_output_dict.setdefault("N2_samp", []).append((True))
                 '''If nothing in dict, add this first formID as add. sampling
                 If this formID not in dict, mark this as the add. sampling (As this occurs first, 
                 if the list is ordered then this should be the first entering the dict)'''
+
             else:
-                processed_output_dict.setdefault("N2_samp", []).append((False))
+                pass
+                #processed_output_dict.setdefault("N2_samp", []).append((False))
 
             processed_output_dict.setdefault("form_id", []).append((i2.split("Id"))[1])  # takes the xxxxxxx from formID
             processed_output_dict.setdefault("form_datetime", []).append(form_datetime)
-
-            current_file_df = pd.read_csv((data[1] + "/" + i), skiprows=33)
+            to_skip = list(range(0, 32)) + [33, 34] # reads to line 33 in csv (headers), then skips first 2 scans
+            current_file_df = pd.read_csv((data[1] + "/" + i), skiprows=to_skip)
             # Reads the formatted output sheet into a dataframe
             current_file_df = current_file_df.dropna(1)
             # removes empty space / NaNs to the right
@@ -381,13 +390,17 @@ class Output(tk.Frame):
 
                     processed_output_dict.setdefault(("{} 2STD").format(col), []).append(
                         current_file_df[("{}").format(col)].std() * 2)
-                if "H2" in col:
-                    avg_H2_per = current_file_df[("{}").format(col)].mean()  # per = %
-                    avg_H2_vol_mL = avg_H2_per * headspace_volume
-                    avg_H2_umol = (1 / (avg_H2_vol_mL * molar_vol_gas)) / 10 ** 6
-                    # Finds H2 mol^-1, flips and divides for umol
+                if col == "% H2" or col == "% O2":
+                #if "H2" in col or "O2" in col:
+                    avg_gas_per = current_file_df[("{}").format(col)].mean()  # per = %
+                    avg_gas_vol_mL = avg_gas_per * headspace_volume
+                    if avg_gas_vol_mL == 0: # incase no desired gas in vial
+                        avg_gas_umol = 0
+                    else:
+                        avg_gas_umol = ((avg_gas_vol_mL/1000) / molar_vol_gas) * 10 ** 6
+                    # Finds gas mol, flips and divides for umol
 
-                    processed_output_dict.setdefault("{} umol".format(col), []).append(avg_H2_umol)
+                    processed_output_dict.setdefault("{} umol".format(col), []).append(avg_gas_umol)
 
         processed_output_df = pd.DataFrame.from_dict(data=processed_output_dict)
         # Converts the dictionary to a Pandas Dataframe
@@ -465,7 +478,7 @@ def listbox_select_all():
 def view_by_access():
     pass
     '''
-    Not implemented - likely to use MIF's LIMS, FLEX, as the database - need more info from MIF Team 
+    Not implemented - likely to use LABMAN's HOLLY database - need more info from MIF Team / LABMAN
     '''
 
 
